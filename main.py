@@ -14,7 +14,6 @@ from playwright.async_api import async_playwright
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-
 SEARCHES = [
     "iPhone 11",
     "iPhone 12",
@@ -24,18 +23,12 @@ SEARCHES = [
     "iPhone 16",
     "Samsung S21",
     "Samsung S22",
-    "Samsung S23"
+    "Samsung S23",
 ]
-
-
-# =========================================================
-# FILTRES
-# =========================================================
 
 MIN_PRICE = 40
 MAX_PRICE = 150
 MIN_MARGIN = 50
-
 MAX_ITEMS_PER_SEARCH = 40
 
 
@@ -52,52 +45,8 @@ RESALE_PRICES = {
     "iphone 16": 500,
     "samsung s21": 190,
     "samsung s22": 240,
-    "samsung s23": 300
+    "samsung s23": 300,
 }
-
-
-# =========================================================
-# MOTS INTERDITS
-# =========================================================
-
-BAD_WORDS = [
-    "pro max",
-    " mini",
-    "mini ",
-    "coque",
-    "housse",
-    "étui",
-    "etui",
-    "funda",
-    "chargeur",
-    "câble",
-    "cable",
-    "adaptateur",
-    "écran",
-    "ecran",
-    "vitre",
-    "batterie seule",
-    "batterie de remplacement",
-    "pièce détachée",
-    "piece detachee",
-    "pièces détachées",
-    "pieces detachees",
-    "pour pièces",
-    "pour pieces",
-    "accessoire",
-    "protection",
-    "film",
-    "verre trempé",
-    "verre trempe",
-    "icloud",
-    "activation lock",
-    "blacklist",
-    "blacklisté",
-    "blackliste",
-    "mdm",
-    "volé",
-    "volée"
-]
 
 
 # =========================================================
@@ -105,11 +54,7 @@ BAD_WORDS = [
 # =========================================================
 
 def send_telegram(message):
-
-    url = (
-        f"https://api.telegram.org/"
-        f"bot{TOKEN}/sendMessage"
-    )
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
     try:
         response = requests.post(
@@ -117,15 +62,16 @@ def send_telegram(message):
             json={
                 "chat_id": CHAT_ID,
                 "text": message,
-                "disable_web_page_preview": False
+                "disable_web_page_preview": False,
             },
-            timeout=20
+            timeout=20,
         )
 
         response.raise_for_status()
+        print("📨 Telegram : message envoyé", flush=True)
 
     except Exception as error:
-        print(f"❌ Telegram : {error}")
+        print(f"❌ Telegram : {error}", flush=True)
 
 
 # =========================================================
@@ -133,7 +79,6 @@ def send_telegram(message):
 # =========================================================
 
 def extract_real_price(body):
-
     pattern = (
         r"(\d+(?:[.,]\d{1,2})?)\s*€"
         r"\s*"
@@ -142,17 +87,11 @@ def extract_real_price(body):
         r"Inclut la Protection acheteurs"
     )
 
-    match = re.search(
-        pattern,
-        body,
-        re.IGNORECASE
-    )
+    match = re.search(pattern, body, re.IGNORECASE)
 
     if match:
         try:
-            return float(
-                match.group(1).replace(",", ".")
-            )
+            return float(match.group(1).replace(",", "."))
         except Exception:
             pass
 
@@ -160,11 +99,10 @@ def extract_real_price(body):
 
 
 # =========================================================
-# EXTRACTION DU TITRE
+# TITRE
 # =========================================================
 
 def extract_listing_title(body):
-
     lines = [
         line.strip()
         for line in body.splitlines()
@@ -172,29 +110,18 @@ def extract_listing_title(body):
     ]
 
     for i, line in enumerate(lines):
-
         if "Inclut la Protection acheteurs" in line:
-
-            for previous in reversed(
-                lines[max(0, i - 8):i]
-            ):
-
+            for previous in reversed(lines[max(0, i - 8):i]):
                 lower = previous.lower()
 
                 if (
                     "€" not in previous
-                    and
-                    "très bon état" not in lower
-                    and
-                    "bon état" not in lower
-                    and
-                    "satisfaisant" not in lower
-                    and
-                    "apple" not in lower
-                    and
-                    "samsung" not in lower
+                    and "très bon état" not in lower
+                    and "bon état" not in lower
+                    and "satisfaisant" not in lower
+                    and "apple" not in lower
+                    and "samsung" not in lower
                 ):
-
                     return previous
 
     return ""
@@ -205,7 +132,6 @@ def extract_listing_title(body):
 # =========================================================
 
 def detect_model(title, search):
-
     text = title.lower()
     search_lower = search.lower()
 
@@ -221,11 +147,10 @@ def detect_model(title, search):
         "iphone 11",
         "samsung s23",
         "samsung s22",
-        "samsung s21"
+        "samsung s21",
     ]
 
     for model in models:
-
         if model in text:
             return model
 
@@ -233,11 +158,10 @@ def detect_model(title, search):
 
 
 # =========================================================
-# MODÈLES INTERDITS
+# FILTRE MODÈLE
 # =========================================================
 
 def is_allowed_model(title):
-
     text = title.lower()
 
     if re.search(r"\bpro\s+max\b", text):
@@ -257,17 +181,15 @@ def is_allowed_model(title):
 # =========================================================
 
 def is_phone_category(body):
-
     text = body.lower()
 
     forbidden_categories = [
         "coques pour téléphones",
         "pièces de rechange",
-        "accessoires pour téléphones"
+        "accessoires pour téléphones",
     ]
 
     for category in forbidden_categories:
-
         if category in text:
             return False
 
@@ -278,31 +200,29 @@ def is_phone_category(body):
 
 
 # =========================================================
-# INFOS TÉLÉPHONE
+# INFOS
 # =========================================================
 
 def extract_info(body):
-
     info = {
         "battery": None,
         "storage": None,
         "condition": None,
-        "simlock": None
+        "simlock": None,
     }
 
     patterns = {
         "battery": r"État de la batterie\s*\n([^\n]+)",
         "storage": r"Capacité de stockage\s*\n([^\n]+)",
         "condition": r"État\s*\n([^\n]+)",
-        "simlock": r"Simlockage\s*\n([^\n]+)"
+        "simlock": r"Simlockage\s*\n([^\n]+)",
     }
 
     for key, pattern in patterns.items():
-
         match = re.search(
             pattern,
             body,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         if match:
@@ -316,15 +236,14 @@ def extract_info(body):
 # =========================================================
 
 def calculate_repair(body):
-
     text = body.lower()
 
     repair = 0
     damages = []
 
     if any(
-        x in text
-        for x in [
+        word in text
+        for word in [
             "écran cassé",
             "ecran casse",
             "écran hs",
@@ -333,28 +252,28 @@ def calculate_repair(body):
             "vitre cassee",
             "fissuré",
             "fissurée",
-            "fissure"
+            "fissure",
         ]
     ):
         repair += 60
         damages.append("écran")
 
     if any(
-        x in text
-        for x in [
+        word in text
+        for word in [
             "batterie hs",
-            "batterie morte"
+            "batterie morte",
         ]
     ):
         repair += 30
         damages.append("batterie")
 
     if any(
-        x in text
-        for x in [
+        word in text
+        for word in [
             "face id hs",
             "face id ne fonctionne",
-            "face id fonctionne pas"
+            "face id fonctionne pas",
         ]
     ):
         repair += 70
@@ -368,7 +287,6 @@ def calculate_repair(body):
 # =========================================================
 
 def analyse(body, search):
-
     if not is_phone_category(body):
         return None
 
@@ -385,10 +303,7 @@ def analyse(body, search):
     if not title:
         return None
 
-    model = detect_model(
-        title,
-        search
-    )
+    model = detect_model(title, search)
 
     if model is None:
         return None
@@ -418,25 +333,26 @@ def analyse(body, search):
         "repair": repair,
         "margin": margin,
         "damages": damages,
-        **info
+        **info,
     }
 
 
 # =========================================================
-# LIENS VINTED
+# RECHERCHE VINTED
 # =========================================================
 
 async def get_item_links(page, search):
-
     url = (
         "https://www.vinted.fr/catalog?search_text="
         + quote(search)
     )
 
+    print(f"🌐 Ouverture : {search}", flush=True)
+
     await page.goto(
         url,
         wait_until="domcontentloaded",
-        timeout=60000
+        timeout=60000,
     )
 
     await page.wait_for_timeout(4000)
@@ -448,9 +364,7 @@ async def get_item_links(page, search):
     urls = []
 
     for link in links:
-
         try:
-
             href = await link.get_attribute("href")
 
             if not href:
@@ -460,10 +374,7 @@ async def get_item_links(page, search):
                 continue
 
             if href.startswith("/"):
-                href = (
-                    "https://www.vinted.fr"
-                    + href
-                )
+                href = "https://www.vinted.fr" + href
 
             if href not in urls:
                 urls.append(href)
@@ -475,29 +386,22 @@ async def get_item_links(page, search):
 
 
 # =========================================================
-# ANALYSE D'UNE ANNONCE
+# ANALYSE ANNONCE
 # =========================================================
 
 async def analyse_item(page, url, search):
-
     try:
-
         await page.goto(
             url,
             wait_until="domcontentloaded",
-            timeout=30000
+            timeout=30000,
         )
 
         await page.wait_for_timeout(1200)
 
-        body = await page.locator(
-            "body"
-        ).inner_text()
+        body = await page.locator("body").inner_text()
 
-        result = analyse(
-            body,
-            search
-        )
+        result = analyse(body, search)
 
         if result is None:
             return None
@@ -507,9 +411,9 @@ async def analyse_item(page, url, search):
         return result
 
     except Exception as error:
-
         print(
-            f"⚠️ Annonce ignorée : {error}"
+            f"⚠️ Annonce ignorée : {error}",
+            flush=True,
         )
 
         return None
@@ -520,89 +424,86 @@ async def analyse_item(page, url, search):
 # =========================================================
 
 async def main():
-
-    print("==============================")
-    print("    VINTED PHONE DEAL BOT")
-    print("==============================")
-    print()
+    print("🚀 LE BOT DEMARRE", flush=True)
+    print("==============================", flush=True)
+    print("    VINTED PHONE DEAL BOT", flush=True)
+    print("==============================", flush=True)
     print(
-        f"💰 Prix : {MIN_PRICE} - {MAX_PRICE} €"
+        f"💰 Prix : {MIN_PRICE} - {MAX_PRICE} €",
+        flush=True,
     )
     print(
-        f"📈 Marge minimum : {MIN_MARGIN} €"
+        f"📈 Marge minimum : {MIN_MARGIN} €",
+        flush=True,
     )
-    print()
 
     print("1️⃣ PLAYWRIGHT", flush=True)
 
     async with async_playwright() as p:
-
         print("2️⃣ CHROMIUM", flush=True)
 
-       browser = await p.chromium.launch(
-    headless=True,
-    executable_path="/usr/bin/chromium",
-    args=[
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage"
-    ],
-    timeout=30000
-)
+        browser = await p.chromium.launch(
+            headless=True,
+            executable_path="/usr/bin/chromium",
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+            timeout=30000,
+        )
+
+        print("3️⃣ CHROMIUM LANCÉ", flush=True)
+
         page = await browser.new_page(
             locale="fr-FR"
         )
 
         already_sent = set()
 
-        # UNE SEULE PASSE
         for search in SEARCHES:
-
-            print()
             print(
-                f"🔎 Recherche : {search}"
+                f"🔎 Recherche : {search}",
+                flush=True,
             )
 
             try:
-
                 urls = await get_item_links(
                     page,
-                    search
+                    search,
                 )
 
             except Exception as error:
-
                 print(
-                    f"❌ Erreur recherche : {error}"
+                    f"❌ Erreur recherche : {error}",
+                    flush=True,
                 )
-
                 continue
 
             print(
-                f"📦 {len(urls)} annonces trouvées"
+                f"📦 {len(urls)} annonces trouvées",
+                flush=True,
             )
 
-            urls = urls[
-                :MAX_ITEMS_PER_SEARCH
-            ]
+            urls = urls[:MAX_ITEMS_PER_SEARCH]
 
             print(
-                f"🔍 Analyse de "
-                f"{len(urls)} annonces..."
+                f"🔍 Analyse de {len(urls)} annonces...",
+                flush=True,
             )
 
             for number, url in enumerate(
                 urls,
-                start=1
+                start=1,
             ):
-
                 if url in already_sent:
                     continue
 
                 result = await analyse_item(
                     page,
                     url,
-                    search
+                    search,
                 )
 
                 if result is None:
@@ -664,15 +565,14 @@ async def main():
 
                 print(
                     f"🚨 OFFRE ENVOYÉE ! "
-                    f"({number}/{len(urls)})"
+                    f"({number}/{len(urls)})",
+                    flush=True,
                 )
 
         await browser.close()
 
-    print()
-    print("✅ Recherche terminée.")
+    print("✅ Recherche terminée.", flush=True)
 
 
 if __name__ == "__main__":
-    print("🚀 LE BOT DEMARRE", flush=True)
     asyncio.run(main())
