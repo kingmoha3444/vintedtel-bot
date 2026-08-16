@@ -539,15 +539,16 @@ async def main():
 
         print("2️⃣ CHROMIUM", flush=True)
 
-        browser = await p.chromium.launch(
+       browser = await p.chromium.launch(
     headless=True,
+    executable_path="/usr/bin/chromium",
     args=[
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage"
-    ]
+    ],
+    timeout=30000
 )
-
         page = await browser.new_page(
             locale="fr-FR"
         )
