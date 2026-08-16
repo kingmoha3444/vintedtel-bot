@@ -1,7 +1,6 @@
 import asyncio
-import json
+import os
 import re
-from pathlib import Path
 from urllib.parse import quote
 
 import requests
@@ -12,12 +11,21 @@ from playwright.async_api import async_playwright
 # CONFIG
 # =========================================================
 
-CONFIG = json.loads(
-    Path("config.json").read_text(encoding="utf-8")
-)
+TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-TOKEN = CONFIG["telegram_bot_token"]
-CHAT_ID = CONFIG["telegram_chat_id"]
+
+SEARCHES = [
+    "iPhone 11",
+    "iPhone 12",
+    "iPhone 13",
+    "iPhone 14",
+    "iPhone 15",
+    "iPhone 16",
+    "Samsung S21",
+    "Samsung S22",
+    "Samsung S23"
+]
 
 
 SEARCHES = [
