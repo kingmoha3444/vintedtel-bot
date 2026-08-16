@@ -664,4 +664,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    print("🚀 LE BOT DEMARRE", flush=True)
     asyncio.run(main())
