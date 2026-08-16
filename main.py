@@ -532,9 +532,13 @@ async def main():
         f"📈 Marge minimum : {MIN_MARGIN} €"
     )
     print()
-print("1️⃣ PLAYWRIGHT", flush=True)
+
+    print("1️⃣ PLAYWRIGHT", flush=True)
+
     async with async_playwright() as p:
-print("2️⃣ CHROMIUM", flush=True)
+
+        print("2️⃣ CHROMIUM", flush=True)
+
         browser = await p.chromium.launch(
             headless=True
         )
