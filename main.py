@@ -28,19 +28,6 @@ SEARCHES = [
 ]
 
 
-SEARCHES = [
-    "iPhone 11",
-    "iPhone 12",
-    "iPhone 13",
-    "iPhone 14",
-    "iPhone 15",
-    "iPhone 16",
-    "Samsung S21",
-    "Samsung S22",
-    "Samsung S23"
-]
-
-
 # =========================================================
 # FILTRES
 # =========================================================
@@ -50,7 +37,6 @@ MAX_PRICE = 150
 MIN_MARGIN = 50
 
 MAX_ITEMS_PER_SEARCH = 40
-INTERVAL = 180
 
 
 # =========================================================
@@ -167,14 +153,14 @@ def extract_real_price(body):
             return float(
                 match.group(1).replace(",", ".")
             )
-        except:
+        except Exception:
             pass
 
     return None
 
 
 # =========================================================
-# EXTRACTION DU TITRE DE L'ANNONCE
+# EXTRACTION DU TITRE
 # =========================================================
 
 def extract_listing_title(body):
@@ -189,8 +175,6 @@ def extract_listing_title(body):
 
         if "Inclut la Protection acheteurs" in line:
 
-            # Généralement le titre est quelques lignes
-            # avant le prix.
             for previous in reversed(
                 lines[max(0, i - 8):i]
             ):
@@ -223,10 +207,8 @@ def extract_listing_title(body):
 def detect_model(title, search):
 
     text = title.lower()
-
     search_lower = search.lower()
 
-    # On utilise d'abord la recherche demandée.
     if search_lower in text:
         return search_lower
 
@@ -258,15 +240,12 @@ def is_allowed_model(title):
 
     text = title.lower()
 
-    # Pro Max
     if re.search(r"\bpro\s+max\b", text):
         return False
 
-    # Pro seul
     if re.search(r"\bpro\b", text):
         return False
 
-    # Mini
     if re.search(r"\bmini\b", text):
         return False
 
@@ -281,7 +260,6 @@ def is_phone_category(body):
 
     text = body.lower()
 
-    # Coques / accessoires
     forbidden_categories = [
         "coques pour téléphones",
         "pièces de rechange",
@@ -293,8 +271,6 @@ def is_phone_category(body):
         if category in text:
             return False
 
-    # Une fiche téléphone Vinted contient normalement
-    # "Téléphones portables" dans son chemin.
     if "téléphones portables" not in text:
         return False
 
@@ -393,13 +369,9 @@ def calculate_repair(body):
 
 def analyse(body, search):
 
-    text = body.lower()
-
-    # Catégorie
     if not is_phone_category(body):
         return None
 
-    # Prix
     price = extract_real_price(body)
 
     if price is None:
@@ -408,13 +380,11 @@ def analyse(body, search):
     if price < MIN_PRICE or price > MAX_PRICE:
         return None
 
-    # Vrai titre
     title = extract_listing_title(body)
 
     if not title:
         return None
 
-    # Modèle
     model = detect_model(
         title,
         search
@@ -423,26 +393,21 @@ def analyse(body, search):
     if model is None:
         return None
 
-    # Pro / Pro Max / Mini
     if not is_allowed_model(title):
         return None
 
-    # Revente
     resale = RESALE_PRICES.get(model)
 
     if resale is None:
         return None
 
-    # Réparation
     repair, damages = calculate_repair(body)
 
-    # Marge
     margin = resale - price - repair
 
     if margin < MIN_MARGIN:
         return None
 
-    # Infos
     info = extract_info(body)
 
     return {
@@ -503,7 +468,7 @@ async def get_item_links(page, search):
             if href not in urls:
                 urls.append(href)
 
-        except:
+        except Exception:
             pass
 
     return urls
@@ -580,126 +545,122 @@ async def main():
 
         already_sent = set()
 
-        while True:
-
-            for search in SEARCHES:
-
-                print()
-                print(
-                    f"🔎 Recherche : {search}"
-                )
-
-                try:
-
-                    urls = await get_item_links(
-                        page,
-                        search
-                    )
-
-                except Exception as error:
-
-                    print(
-                        f"❌ Erreur recherche : {error}"
-                    )
-
-                    continue
-
-                print(
-                    f"📦 {len(urls)} annonces trouvées"
-                )
-
-                urls = urls[
-                    :MAX_ITEMS_PER_SEARCH
-                ]
-
-                print(
-                    f"🔍 Analyse de "
-                    f"{len(urls)} annonces..."
-                )
-
-                for number, url in enumerate(
-                    urls,
-                    start=1
-                ):
-
-                    if url in already_sent:
-                        continue
-
-                    result = await analyse_item(
-                        page,
-                        url,
-                        search
-                    )
-
-                    if result is None:
-                        continue
-
-                    message = (
-                        "🚨 BON PLAN VINTED\n\n"
-                        f"📱 {result['model'].upper()}\n"
-                        f"📝 {result['title']}\n\n"
-                        f"💰 Achat : {result['price']:.0f} €\n"
-                        f"📈 Revente estimée : "
-                        f"{result['resale']:.0f} €\n"
-                        f"🔧 Réparation : "
-                        f"{result['repair']:.0f} €\n"
-                        f"💵 Marge estimée : "
-                        f"+{result['margin']:.0f} €\n"
-                    )
-
-                    if result["battery"]:
-                        message += (
-                            f"🔋 Batterie : "
-                            f"{result['battery']}\n"
-                        )
-
-                    if result["storage"]:
-                        message += (
-                            f"💾 Stockage : "
-                            f"{result['storage']}\n"
-                        )
-
-                    if result["condition"]:
-                        message += (
-                            f"✨ État : "
-                            f"{result['condition']}\n"
-                        )
-
-                    if result["simlock"]:
-                        message += (
-                            f"📶 Simlockage : "
-                            f"{result['simlock']}\n"
-                        )
-
-                    if result["damages"]:
-                        message += (
-                            "🛠️ Défauts : "
-                            + ", ".join(
-                                result["damages"]
-                            )
-                            + "\n"
-                        )
-
-                    message += (
-                        f"\n🔗 {result['url']}"
-                    )
-
-                    send_telegram(message)
-
-                    already_sent.add(url)
-
-                    print(
-                        f"🚨 OFFRE ENVOYÉE ! "
-                        f"({number}/{len(urls)})"
-                    )
+        # UNE SEULE PASSE
+        for search in SEARCHES:
 
             print()
             print(
-                f"⏳ Nouvelle recherche "
-                f"dans {INTERVAL} secondes..."
+                f"🔎 Recherche : {search}"
             )
 
-            await asyncio.sleep(INTERVAL)
+            try:
+
+                urls = await get_item_links(
+                    page,
+                    search
+                )
+
+            except Exception as error:
+
+                print(
+                    f"❌ Erreur recherche : {error}"
+                )
+
+                continue
+
+            print(
+                f"📦 {len(urls)} annonces trouvées"
+            )
+
+            urls = urls[
+                :MAX_ITEMS_PER_SEARCH
+            ]
+
+            print(
+                f"🔍 Analyse de "
+                f"{len(urls)} annonces..."
+            )
+
+            for number, url in enumerate(
+                urls,
+                start=1
+            ):
+
+                if url in already_sent:
+                    continue
+
+                result = await analyse_item(
+                    page,
+                    url,
+                    search
+                )
+
+                if result is None:
+                    continue
+
+                message = (
+                    "🚨 BON PLAN VINTED\n\n"
+                    f"📱 {result['model'].upper()}\n"
+                    f"📝 {result['title']}\n\n"
+                    f"💰 Achat : {result['price']:.0f} €\n"
+                    f"📈 Revente estimée : "
+                    f"{result['resale']:.0f} €\n"
+                    f"🔧 Réparation : "
+                    f"{result['repair']:.0f} €\n"
+                    f"💵 Marge estimée : "
+                    f"+{result['margin']:.0f} €\n"
+                )
+
+                if result["battery"]:
+                    message += (
+                        f"🔋 Batterie : "
+                        f"{result['battery']}\n"
+                    )
+
+                if result["storage"]:
+                    message += (
+                        f"💾 Stockage : "
+                        f"{result['storage']}\n"
+                    )
+
+                if result["condition"]:
+                    message += (
+                        f"✨ État : "
+                        f"{result['condition']}\n"
+                    )
+
+                if result["simlock"]:
+                    message += (
+                        f"📶 Simlockage : "
+                        f"{result['simlock']}\n"
+                    )
+
+                if result["damages"]:
+                    message += (
+                        "🛠️ Défauts : "
+                        + ", ".join(
+                            result["damages"]
+                        )
+                        + "\n"
+                    )
+
+                message += (
+                    f"\n🔗 {result['url']}"
+                )
+
+                send_telegram(message)
+
+                already_sent.add(url)
+
+                print(
+                    f"🚨 OFFRE ENVOYÉE ! "
+                    f"({number}/{len(urls)})"
+                )
+
+        await browser.close()
+
+    print()
+    print("✅ Recherche terminée.")
 
 
 if __name__ == "__main__":
