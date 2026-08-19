@@ -14,6 +14,7 @@ from playwright.async_api import async_playwright
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
+
 SEARCHES = [
     "iPhone 11",
     "iPhone 12",
@@ -26,10 +27,17 @@ SEARCHES = [
     "Samsung S23",
 ]
 
+
+# =========================================================
+# FILTRES ASSOUPLIS
+# =========================================================
+
 MIN_PRICE = 40
-MAX_PRICE = 150
-MIN_MARGIN = 50
-MAX_ITEMS_PER_SEARCH = 40
+MAX_PRICE = 180
+
+MIN_MARGIN = 40
+
+MAX_ITEMS_PER_SEARCH = 60
 
 
 # =========================================================
@@ -43,6 +51,7 @@ RESALE_PRICES = {
     "iphone 14": 340,
     "iphone 15": 420,
     "iphone 16": 500,
+
     "samsung s21": 190,
     "samsung s22": 240,
     "samsung s23": 300,
@@ -54,9 +63,15 @@ RESALE_PRICES = {
 # =========================================================
 
 def send_telegram(message, photo_url=None):
+
     try:
+
         if photo_url:
-            url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+            url = (
+                f"https://api.telegram.org/"
+                f"bot{TOKEN}/sendPhoto"
+            )
 
             response = requests.post(
                 url,
@@ -68,52 +83,46 @@ def send_telegram(message, photo_url=None):
                 timeout=20,
             )
 
-            # Si Telegram refuse l'image, on envoie quand même
-            # le message normalement.
-            if not response.ok:
+            if response.ok:
+
                 print(
-                    f"⚠️ Photo Telegram refusée : {response.text}",
+                    "📨 Telegram : photo + message envoyé",
                     flush=True,
                 )
 
-                fallback_url = (
-                    f"https://api.telegram.org/"
-                    f"bot{TOKEN}/sendMessage"
-                )
+                return
 
-                fallback = requests.post(
-                    fallback_url,
-                    json={
-                        "chat_id": CHAT_ID,
-                        "text": message,
-                        "disable_web_page_preview": False,
-                    },
-                    timeout=20,
-                )
-
-                fallback.raise_for_status()
-
-        else:
-            url = (
-                f"https://api.telegram.org/"
-                f"bot{TOKEN}/sendMessage"
+            print(
+                f"⚠️ Photo Telegram refusée : "
+                f"{response.text}",
+                flush=True,
             )
 
-            response = requests.post(
-                url,
-                json={
-                    "chat_id": CHAT_ID,
-                    "text": message,
-                    "disable_web_page_preview": False,
-                },
-                timeout=20,
-            )
+        # Fallback texte
+        url = (
+            f"https://api.telegram.org/"
+            f"bot{TOKEN}/sendMessage"
+        )
 
-            response.raise_for_status()
+        response = requests.post(
+            url,
+            json={
+                "chat_id": CHAT_ID,
+                "text": message,
+                "disable_web_page_preview": False,
+            },
+            timeout=20,
+        )
 
-        print("📨 Telegram : message envoyé", flush=True)
+        response.raise_for_status()
+
+        print(
+            "📨 Telegram : message envoyé",
+            flush=True,
+        )
 
     except Exception as error:
+
         print(
             f"❌ Telegram : {error}",
             flush=True,
@@ -125,27 +134,43 @@ def send_telegram(message, photo_url=None):
 # =========================================================
 
 def extract_real_price(body):
-    pattern = (
+
+    patterns = [
+
+        # Format habituel Vinted
         r"(\d+(?:[.,]\d{1,2})?)\s*€"
         r"\s*"
         r"(\d+(?:[.,]\d{1,2})?)\s*€"
         r"\s*"
-        r"Inclut la Protection acheteurs"
-    )
+        r"Inclut la Protection acheteurs",
 
-    match = re.search(
-        pattern,
-        body,
-        re.IGNORECASE,
-    )
+        # Fallback : prix juste avant la protection
+        r"(\d+(?:[.,]\d{1,2})?)\s*€"
+        r"\s*"
+        r"Inclut la Protection acheteurs",
+    ]
 
-    if match:
-        try:
-            return float(
-                match.group(1).replace(",", ".")
-            )
-        except Exception:
-            pass
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            body,
+            re.IGNORECASE,
+        )
+
+        if match:
+
+            try:
+
+                return float(
+                    match.group(1).replace(
+                        ",",
+                        ".",
+                    )
+                )
+
+            except Exception:
+                pass
 
     return None
 
@@ -155,6 +180,7 @@ def extract_real_price(body):
 # =========================================================
 
 def extract_listing_title(body):
+
     lines = [
         line.strip()
         for line in body.splitlines()
@@ -163,16 +189,25 @@ def extract_listing_title(body):
 
     for i, line in enumerate(lines):
 
-        if "Inclut la Protection acheteurs" in line:
+        if (
+            "Inclut la Protection acheteurs"
+            in line
+        ):
+
+            previous_lines = lines[
+                max(0, i - 12):i
+            ]
 
             for previous in reversed(
-                lines[max(0, i - 8):i]
+                previous_lines
             ):
 
                 lower = previous.lower()
 
                 if (
                     "€" not in previous
+                    and
+                    len(previous) >= 3
                     and
                     "très bon état" not in lower
                     and
@@ -183,8 +218,34 @@ def extract_listing_title(body):
                     "apple" not in lower
                     and
                     "samsung" not in lower
+                    and
+                    "inclut" not in lower
                 ):
+
                     return previous
+
+    return ""
+
+
+# =========================================================
+# TITRE META
+# =========================================================
+
+async def extract_meta_title(page):
+
+    try:
+
+        title = await page.locator(
+            'meta[property="og:title"]'
+        ).get_attribute(
+            "content"
+        )
+
+        if title:
+            return title.strip()
+
+    except Exception:
+        pass
 
     return ""
 
@@ -196,11 +257,8 @@ def extract_listing_title(body):
 def detect_model(title, search):
 
     text = title.lower()
-    search_lower = search.lower()
 
-    if search_lower in text:
-        return search_lower
-
+    # On cherche d'abord les modèles exacts.
     models = [
         "iphone 16",
         "iphone 15",
@@ -208,6 +266,7 @@ def detect_model(title, search):
         "iphone 13",
         "iphone 12",
         "iphone 11",
+
         "samsung s23",
         "samsung s22",
         "samsung s21",
@@ -215,37 +274,61 @@ def detect_model(title, search):
 
     for model in models:
 
-        if model in text:
+        if re.search(
+            rf"\b{re.escape(model)}\b",
+            text,
+        ):
+
             return model
+
+    # Fallback sur la recherche
+    search_lower = search.lower()
+
+    if search_lower in text:
+        return search_lower
 
     return None
 
 
 # =========================================================
-# FILTRE MODÈLE
+# VARIANTES À REFUSER
 # =========================================================
 
 def is_allowed_model(title):
 
     text = title.lower()
 
-    if re.search(
-        r"\bpro\s+max\b",
-        text,
-    ):
-        return False
+    forbidden_variants = [
 
-    if re.search(
+        # Apple
+        r"\bpro\s*max\b",
         r"\bpro\b",
-        text,
-    ):
-        return False
-
-    if re.search(
         r"\bmini\b",
-        text,
-    ):
-        return False
+        r"\bplus\b",
+
+        # Samsung
+        r"\bultra\b",
+        r"\bfe\b",
+        r"\bplus\b",
+
+        # Autres variantes/accessoires
+        r"\bclone\b",
+        r"\breplique\b",
+        r"\bmaquette\b",
+        r"\bfactice\b",
+        r"\bcoque\b",
+        r"\bcase\b",
+    ]
+
+    for pattern in forbidden_variants:
+
+        if re.search(
+            pattern,
+            text,
+            re.IGNORECASE,
+        ):
+
+            return False
 
     return True
 
@@ -254,23 +337,35 @@ def is_allowed_model(title):
 # CATÉGORIE
 # =========================================================
 
-def is_phone_category(body):
+def is_phone_category(body, title):
 
-    text = body.lower()
+    text = (
+        body
+        + "\n"
+        + title
+    ).lower()
 
     forbidden_categories = [
+
         "coques pour téléphones",
+        "coque de téléphone",
+        "coque téléphone",
         "pièces de rechange",
+        "pièces détachées",
         "accessoires pour téléphones",
+        "accessoire téléphone",
+        "chargeur",
+        "câble usb",
+        "cable usb",
+        "vitre de protection",
+        "film de protection",
     ]
 
     for category in forbidden_categories:
 
         if category in text:
-            return False
 
-    if "téléphones portables" not in text:
-        return False
+            return False
 
     return True
 
@@ -289,6 +384,7 @@ def extract_info(body):
     }
 
     patterns = {
+
         "battery":
             r"État de la batterie\s*\n([^\n]+)",
 
@@ -311,7 +407,11 @@ def extract_info(body):
         )
 
         if match:
-            info[key] = match.group(1).strip()
+
+            info[key] = (
+                match.group(1)
+                .strip()
+            )
 
     return info
 
@@ -325,45 +425,111 @@ def calculate_repair(body):
     text = body.lower()
 
     repair = 0
+
     damages = []
 
+    # -----------------------------------------------------
+    # ÉCRAN
+    # -----------------------------------------------------
+
+    screen_words = [
+
+        "écran cassé",
+        "ecran casse",
+
+        "écran hs",
+        "ecran hs",
+
+        "vitre cassée",
+        "vitre cassee",
+
+        "fissuré",
+        "fissurée",
+
+        "fissure",
+
+        "écran fissuré",
+        "ecran fissure",
+    ]
+
     if any(
         word in text
-        for word in [
-            "écran cassé",
-            "ecran casse",
-            "écran hs",
-            "ecran hs",
-            "vitre cassée",
-            "vitre cassee",
-            "fissuré",
-            "fissurée",
-            "fissure",
-        ]
+        for word in screen_words
     ):
+
         repair += 60
-        damages.append("écran")
+
+        damages.append(
+            "écran"
+        )
+
+    # -----------------------------------------------------
+    # BATTERIE
+    # -----------------------------------------------------
+
+    battery_words = [
+
+        "batterie hs",
+        "batterie morte",
+        "batterie à changer",
+        "batterie a changer",
+    ]
 
     if any(
         word in text
-        for word in [
-            "batterie hs",
-            "batterie morte",
-        ]
+        for word in battery_words
     ):
+
         repair += 30
-        damages.append("batterie")
+
+        damages.append(
+            "batterie"
+        )
+
+    # -----------------------------------------------------
+    # FACE ID
+    # -----------------------------------------------------
+
+    faceid_words = [
+
+        "face id hs",
+        "face id ne fonctionne",
+        "face id fonctionne pas",
+        "faceid hs",
+    ]
 
     if any(
         word in text
-        for word in [
-            "face id hs",
-            "face id ne fonctionne",
-            "face id fonctionne pas",
-        ]
+        for word in faceid_words
     ):
+
         repair += 70
-        damages.append("Face ID")
+
+        damages.append(
+            "Face ID"
+        )
+
+    # -----------------------------------------------------
+    # TACTILE
+    # -----------------------------------------------------
+
+    touch_words = [
+
+        "tactile hs",
+        "tactile ne fonctionne",
+        "tactile fonctionne pas",
+    ]
+
+    if any(
+        word in text
+        for word in touch_words
+    ):
+
+        repair += 80
+
+        damages.append(
+            "tactile"
+        )
 
     return repair, damages
 
@@ -372,23 +538,59 @@ def calculate_repair(body):
 # ANALYSE
 # =========================================================
 
-def analyse(body, search):
+def analyse(
+    body,
+    search,
+    meta_title="",
+):
 
-    if not is_phone_category(body):
+    # -----------------------------------------------------
+    # TITRE
+    # -----------------------------------------------------
+
+    title = extract_listing_title(
+        body
+    )
+
+    if not title:
+        title = meta_title
+
+    if not title:
         return None
 
-    price = extract_real_price(body)
+    # -----------------------------------------------------
+    # CATÉGORIE
+    # -----------------------------------------------------
+
+    if not is_phone_category(
+        body,
+        title,
+    ):
+
+        return None
+
+    # -----------------------------------------------------
+    # PRIX
+    # -----------------------------------------------------
+
+    price = extract_real_price(
+        body
+    )
 
     if price is None:
         return None
 
-    if price < MIN_PRICE or price > MAX_PRICE:
+    if (
+        price < MIN_PRICE
+        or
+        price > MAX_PRICE
+    ):
+
         return None
 
-    title = extract_listing_title(body)
-
-    if not title:
-        return None
+    # -----------------------------------------------------
+    # MODÈLE
+    # -----------------------------------------------------
 
     model = detect_model(
         title,
@@ -398,31 +600,72 @@ def analyse(body, search):
     if model is None:
         return None
 
-    if not is_allowed_model(title):
+    # -----------------------------------------------------
+    # VARIANTE
+    # -----------------------------------------------------
+
+    if not is_allowed_model(
+        title
+    ):
+
         return None
 
-    resale = RESALE_PRICES.get(model)
+    # -----------------------------------------------------
+    # REVENTE
+    # -----------------------------------------------------
+
+    resale = RESALE_PRICES.get(
+        model
+    )
 
     if resale is None:
         return None
 
-    repair, damages = calculate_repair(body)
+    # -----------------------------------------------------
+    # RÉPARATION
+    # -----------------------------------------------------
 
-    margin = resale - price - repair
+    repair, damages = (
+        calculate_repair(body)
+    )
+
+    # -----------------------------------------------------
+    # MARGE
+    # -----------------------------------------------------
+
+    margin = (
+        resale
+        - price
+        - repair
+    )
 
     if margin < MIN_MARGIN:
         return None
 
-    info = extract_info(body)
+    # -----------------------------------------------------
+    # INFOS
+    # -----------------------------------------------------
+
+    info = extract_info(
+        body
+    )
 
     return {
+
         "title": title,
+
         "model": model,
+
         "price": price,
+
         "resale": resale,
+
         "repair": repair,
+
         "margin": margin,
+
         "damages": damages,
+
         **info,
     }
 
@@ -431,10 +674,14 @@ def analyse(body, search):
 # RECHERCHE VINTED
 # =========================================================
 
-async def get_item_links(page, search):
+async def get_item_links(
+    page,
+    search,
+):
 
     url = (
-        "https://www.vinted.fr/catalog?search_text="
+        "https://www.vinted.fr/catalog"
+        "?search_text="
         + quote(search)
     )
 
@@ -449,7 +696,9 @@ async def get_item_links(page, search):
         timeout=60000,
     )
 
-    await page.wait_for_timeout(4000)
+    await page.wait_for_timeout(
+        4000
+    )
 
     links = await page.locator(
         'a[href*="/items/"]'
@@ -472,13 +721,17 @@ async def get_item_links(page, search):
                 continue
 
             if href.startswith("/"):
+
                 href = (
                     "https://www.vinted.fr"
                     + href
                 )
 
             if href not in urls:
-                urls.append(href)
+
+                urls.append(
+                    href
+                )
 
         except Exception:
             pass
@@ -504,22 +757,32 @@ async def analyse_item(
             timeout=30000,
         )
 
-        await page.wait_for_timeout(1200)
+        await page.wait_for_timeout(
+            1200
+        )
 
         body = await page.locator(
             "body"
         ).inner_text()
 
+        # Titre supplémentaire
+        meta_title = (
+            await extract_meta_title(
+                page
+            )
+        )
+
         result = analyse(
             body,
             search,
+            meta_title,
         )
 
         if result is None:
             return None
 
         # =================================================
-        # RÉCUPÉRATION DE LA PHOTO
+        # PHOTO
         # =================================================
 
         photo_url = None
@@ -535,23 +798,27 @@ async def analyse_item(
         except Exception:
             photo_url = None
 
-        # Deuxième méthode si og:image n'existe pas
         if not photo_url:
 
             try:
 
                 image = page.locator(
-                    'img'
+                    "img"
                 ).first
 
-                photo_url = await image.get_attribute(
-                    "src"
+                photo_url = (
+                    await image.get_attribute(
+                        "src"
+                    )
                 )
 
             except Exception:
                 photo_url = None
 
-        result["photo_url"] = photo_url
+        result["photo_url"] = (
+            photo_url
+        )
+
         result["url"] = url
 
         return result
@@ -559,7 +826,8 @@ async def analyse_item(
     except Exception as error:
 
         print(
-            f"⚠️ Annonce ignorée : {error}",
+            f"⚠️ Annonce ignorée : "
+            f"{error}",
             flush=True,
         )
 
@@ -583,7 +851,7 @@ async def main():
     )
 
     print(
-        "    VINTED PHONE DEAL BOT",
+        "    VINTED PHONE DEAL BOT V2",
         flush=True,
     )
 
@@ -605,14 +873,20 @@ async def main():
     )
 
     print(
-        "1️⃣ PLAYWRIGHT",
+        f"🔍 Annonces/recherche : "
+        f"{MAX_ITEMS_PER_SEARCH}",
+        flush=True,
+    )
+
+    print(
+        "==============================",
         flush=True,
     )
 
     async with async_playwright() as p:
 
         print(
-            "2️⃣ CHROMIUM",
+            "🌐 Lancement Chromium...",
             flush=True,
         )
 
@@ -629,7 +903,7 @@ async def main():
         )
 
         print(
-            "3️⃣ CHROMIUM LANCÉ",
+            "✅ Chromium lancé",
             flush=True,
         )
 
@@ -704,7 +978,7 @@ async def main():
                     continue
 
                 # =================================================
-                # MESSAGE TELEGRAM
+                # MESSAGE
                 # =================================================
 
                 message = (
@@ -766,7 +1040,7 @@ async def main():
                 )
 
                 # =================================================
-                # ENVOI AVEC PHOTO
+                # TELEGRAM
                 # =================================================
 
                 send_telegram(
@@ -776,7 +1050,9 @@ async def main():
                     ),
                 )
 
-                already_sent.add(url)
+                already_sent.add(
+                    url
+                )
 
                 print(
                     f"🚨 OFFRE ENVOYÉE ! "
